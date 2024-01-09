@@ -17,7 +17,7 @@ warnings.filterwarnings('ignore')
 
 
 
-class Augmentaion():
+class BertAugmentaion() :
     def __init__(self, data_path, save_path, wordnet_path):
 
         self.data_path = data_path
@@ -427,6 +427,19 @@ class Augmentaion():
         return df_change
 
 
+
+class KorEDAAugmentaion() :
+
+    def __init__(self, data_path, save_path, wordnet_path):
+
+        self.data_path = data_path
+        self.save_path = save_path
+        self.wordnet_path = wordnet_path
+        self.df = pd.read_csv(data_path)
+        
+
+
+
 class Path(Enum):
     TRAIN = '../dataset/train.csv'
     DEV = '../dataset/dev.csv'
@@ -442,15 +455,15 @@ if __name__ == '__main__':
         Dev, Test 데이터 전처리 : 특수문자 처리, 중복 표현 제거, hanspell(맞춤법 검사) 
     """
     
-    train_augment = Augmentaion(data_path=Path.TRAIN.value,
+    train_augment = BertAugmentaion(data_path=Path.TRAIN.value,
                                 save_path=Path.SAVE.value,
                                 wordnet_path=Path.WORDNET.value)
     
-    dev_augment = Augmentaion(data_path=Path.DEV.value,
+    dev_augment = BertAugmentaion(data_path=Path.DEV.value,
                                 save_path=Path.SAVE.value,
                                 wordnet_path=Path.WORDNET.value)
     
-    test_augment = Augmentaion(data_path=Path.TEST.value,
+    test_augment = BertAugmentaion(data_path=Path.TEST.value,
                                 save_path=Path.SAVE.value,
                                 wordnet_path=Path.WORDNET.value)
     
