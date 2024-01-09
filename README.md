@@ -1,4 +1,5 @@
 # level2-klue-nlp-12
+Relation Extraction Project
 
 ## Team members
 손윤환_T6014
