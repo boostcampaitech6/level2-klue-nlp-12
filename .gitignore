@@ -1,0 +1,10 @@
+code/dict_label_to_num.pkl
+code/dict_num_to_label.pkl
+code/results/
+code/prediction/
+code/best_model
+code/__pycache__
+code/logs
+
+
+dataset/
