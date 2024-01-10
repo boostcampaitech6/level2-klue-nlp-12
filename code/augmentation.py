@@ -8,16 +8,180 @@ from tqdm.auto import tqdm
 from enum import Enum
 from typing import Union
 
-from soynlp.normalizer import emoticon_normalize, repeat_normalize
-from hanspell import spell_checker
-from konlpy.tag import Okt, Kkma
+# from soynlp.normalizer import emoticon_normalize, repeat_normalize
+# from hanspell import spell_checker
+# from konlpy.tag import Okt, Kkma
+
+from bs4 import BeautifulSoup
+from selenium import webdriver
+import random
+import requests
+from kiwipiepy import Kiwi
+import time
+from quickspacer import Spacer
+import json
+
+
 
 import warnings
 warnings.filterwarnings('ignore')
 
 
 
-class BertAugmentaion() :
+
+class Adverb_Augmentation():
+
+    def __init__(self, data_path, save_path) :
+        self.data_path = data_path
+        self.save_path = save_path
+        self.df = pd.read_csv(data_path)
+        self.kiwi = Kiwi()
+        self.spacing = Spacer().space
+
+    # 경로 생성 메서드
+    def create_folder(self, save_path:str)->None:
+        if not os.path.exists(save_path):
+            os.makedirs(save_path)
+
+    def _adverb_detector(self, sentence):
+
+        # POS info
+        pos_list = [(x[0], x[1]) for x in self.kiwi.tokenize(sentence)] # (token, pos)
+
+        adverb_list = []
+        for pos in pos_list:
+            if pos[1] == "MAG" and len(pos[0]) > 1: # 1음절 부사는 제외함.
+                adverb_list.append(pos[0])
+        return adverb_list
+
+
+    def _get_gloss(self, word):
+        res = requests.get("https://dic.daum.net/search.do?q=" + word, timeout=5)
+        time.sleep(random.uniform(0.5,2.5))
+        soup = BeautifulSoup(res.content, "html.parser")
+        try:
+            # 첫 번째 뜻풀이.
+            meaning = soup.find('span', class_='txt_search')
+        except AttributeError:
+            return word
+        if not meaning:
+            return word
+
+        # parsing 결과에서 한글만 추출
+        meaning = re.findall('[가-힣]+', str(meaning))
+        meaning = ' '.join(meaning)
+
+        # 띄어쓰기 오류 교정 (위 에 -> 위에)
+        # meaning = spell_checker.check(meaning).as_dict()['checked'].strip()
+        meaning = self.spacing([meaning.replace(" ", "")])
+        return meaning[0].strip()
+
+    def adverb_gloss_replacement(self, sentence):
+        adverb_list = self._adverb_detector(sentence)
+        if adverb_list:
+            # 부사들 중에서 1개만 랜덤으로 선택합니다.
+            adverb = random.choice(adverb_list)
+            try:
+                gloss = self._get_gloss(adverb)
+                sentence = sentence.replace(adverb, gloss)
+            except:
+                print('except: ', sentence)
+                pass
+        return sentence
+
+    def concat(self, df_list) -> pd.DataFrame :
+        """주어진 DataFrame을 결합하고 중복 처리, 인덱스 재정렬을 수행하는 메서드
+
+        Args:
+            df_list (list[pd.DataFrame]): DataFrame으로 이루어진 List
+
+        Returns:
+            pd.DataFrame: 결합된 DataFrame
+        """
+
+        df_concat = pd.concat(df_list)
+        df_concat.drop_duplicates(subset=['sentence'], inplace=True)
+        df_concat.reset_index(drop=True, inplace=True)
+        return df_concat 
+
+    def augmentation(self, file_name='train_augment.csv', save=True) :
+
+        df_orig = self.df.copy()
+        features = df_orig["label"].unique().tolist()
+        features.remove("no_relation")
+
+        augdf_list = []
+
+        # no_relation을 제외한 feature마다 돌아가면서
+        for feat in features :
+            print("Now processing feature {}...".format(feat))
+            
+            df_select = df_orig[df_orig["label"] == feat]
+            df_aug = self.get_augmented_df(df_select)
+            augdf_list.append(df_aug)
+            
+        df_concat = self.concat(augdf_list)
+        df_augment = self.concat(df_orig, df_concat)
+
+        if save :
+            df_augment.to_csv(os.path.join(self.save_path, file_name), index=False)
+        else :
+            return df_augment
+
+    # df를 받아, 증강 df 리턴
+    def get_augmented_df(self, df) :
+        
+        # df 복사
+        df_aug = df.copy()
+        
+        # 부사 교체한 열을 만들어, 변한 것들만 남김
+        df_aug['new_sentence'] = df_aug['sentence'].apply(self.adverb_gloss_replacement)
+        df_aug = df_aug[(df_aug['sentence'] != df_aug['new_sentence'])]
+
+        # sub, obj 재추적
+        df_aug['new_subject_entity'] = df_aug.apply(self.find_new_subject_word, axis=1)
+        df_aug['new_object_entity'] = df_aug.apply(self.find_new_object_word, axis=1)
+
+        # col 정리
+        df_aug = df_aug[['id', 'new_sentence', 'new_subject_entity', 'new_object_entity', 'label', "source"]]
+        df_aug = df_aug.rename(columns={'new_sentence': 'sentence', 'new_subject_entity': 'subject_entity', 'new_object_entity': 'object_entity'})
+
+        return df_aug
+    
+
+    def find_new_subject_word(self, row) :
+
+        sub_word = row["subject_entity"][1:-1].split(',')[0].split(':')[1].replace("'", "").strip()
+        start_idx = row["new_sentence"].find(sub_word)
+        if start_idx == -1:
+            return -1
+        end_idx = start_idx + len(sub_word) - 1
+
+        result = json.loads(row["subject_entity"].replace("'", "\""))
+        result["start_idx"] = start_idx
+        result["end_idx"] = end_idx
+
+        return str(result)
+
+    def find_new_object_word(self, row) :
+
+        obj_word = row["object_entity"][1:-1].split(',')[0].split(':')[1].replace("'", "").strip()
+        start_idx = row["new_sentence"].find(obj_word)
+        if start_idx == -1:
+            return -1
+        end_idx = start_idx + len(obj_word) - 1
+
+        result = json.loads(row["object_entity"].replace("'", "\""))
+        result["start_idx"] = start_idx
+        result["end_idx"] = end_idx
+
+        return str(result)
+
+
+
+
+class Bert_Augmentaion() :
+
     def __init__(self, data_path, save_path, wordnet_path):
 
         self.data_path = data_path
@@ -49,40 +213,6 @@ class BertAugmentaion() :
         """
         df.to_csv(os.path.join(save_path, file_name), index=False)
 
-    def concat(self, df_list:list[pd.DataFrame]) -> pd.DataFrame:
-        """주어진 DataFrame을 결합하고 중복 처리, 인덱스 재정렬을 수행하는 메서드
-
-        Args:
-            df_list (list[pd.DataFrame]): DataFrame으로 이루어진 List
-
-        Returns:
-            pd.DataFrame: 결합된 DataFrame
-        """
-        df_concat = pd.concat(df_list)
-        df_concat.drop_duplicates(subset=['sentence_1', 'sentence_2'], inplace=True)
-        df_concat.reset_index(drop=True, inplace=True)
-        return df_concat 
-    
-
-    def train_augmentationV1(self, file_name='train_augmentV1.csv', save=True) -> Union[pd.DataFrame, None]:
-        """AugmentationV1 버전 데이터 생성
-            - 라벨 4이상 데이터 단순 증강.
-
-        Args:
-            file_name (str, optional): 저장할 파일 이름. Defaults to 'train_augmentV1.csv'.
-            save (bool, optional): 반환 or 저장 여부 선택. . Defaults to True.
-
-        Returns:
-            Union[pd.DataFrame, None]: save=False일 경우 증강 데이터 반환
-        """
-        df_original = self.df.copy()
-        df_augment = self.simple_augmentation(df=df_original, label=4)
-        
-        if save:
-            self.save_data(df_augment, self.save_path, file_name)
-        else:
-            return df_augment
-
     # train 데이터 전처리 및 증강 메서드
     def train_augmentationV2(self, file_name='train_augmentV2.csv', save=True) -> Union[pd.DataFrame, None]:
         """AugementV2 버전 데이터 생성
@@ -109,7 +239,6 @@ class BertAugmentaion() :
             self.save_data(df_augment, self.save_path, file_name)
         else:
             return df_augment
-
 
     def train_augmentationV3(self, file_name='train_augmentV3.csv', save=True) -> Union[pd.DataFrame, None]:
         """AugmentationV3 버전 데이터 생성
@@ -173,7 +302,6 @@ class BertAugmentaion() :
         df_spellcheck = self.spelling_check(self.df)
         self.save_data(df_spellcheck, self.save_path, file_name)
 
-
     def spelling_check(self, df:pd.DataFrame) -> pd.DataFrame:
         """
         데이터에 apply_hanspell 함수를 적용
@@ -189,7 +317,6 @@ class BertAugmentaion() :
         df_change["sentence_2"] = df_change["sentence_2"].progress_map(self.apply_hanspell)
         return df_change
     
-
     def apply_hanspell(self, text:str) -> str:
         """
         중복 감정 표현 및 표현 제거, 특수 문자 제거 후 hanspell 맞춤법 검사 적용
@@ -206,7 +333,6 @@ class BertAugmentaion() :
         text = text.strip()
         spell_check_text = spell_checker.check(text).checked
         return spell_check_text
-    
 
     def synonym_replacement(self, df:pd.DataFrame, wordnet_path:str, rng:float=0.5, symmin:float=3.0, symmax:float=4.5, ratio:int=2) -> pd.DataFrame:
         """ 동의어 대체 및 조사 대체를 수행하는 메서드
@@ -266,7 +392,6 @@ class BertAugmentaion() :
 
         return sr_sentence
     
-
     def make_sentence(self, sentence: list, compare: str, sym: str) -> str:
         """
         sentence_1, sentence_2에 모두 등장하는 명사를 교체하고 조사를 교정
@@ -316,7 +441,6 @@ class BertAugmentaion() :
         else:
             return True
 
-
     def change_josa(self, noun: str, josa: str) -> str:
         """
         명사의 끝음절 받침 여부에 따라서 조사 교체
@@ -337,7 +461,6 @@ class BertAugmentaion() :
         else:
             return josa
         
-    
     def swap_sentence(self, df:pd.DataFrame) -> pd.DataFrame:
         """Sentence1과 Sentence2를 Swap(0.5 <= label <3.5, 4.5<= label < 5 인 라벨에 대해서만 sentence swap)
 
@@ -352,7 +475,6 @@ class BertAugmentaion() :
         df_swapped['sentence_2'] = df['sentence_1']
         df_swapped = df_swapped[((df_swapped['label'] >= 0.5) & (df_swapped['label'] <3.5)) | ((df_swapped['label'] >= 4.5) & (df_swapped['label'] <5)) ]
         return df_swapped
-    
     
     def copied_sentenceV2(self, df:pd.DataFrame) -> pd.DataFrame:
         """(Setence1, Sentence2, label) --> (Sentence1 , Sentence2, 4.9)로 대체.
@@ -377,22 +499,6 @@ class BertAugmentaion() :
         df_change.reset_index(drop=True, inplace=True)
         return df_change
     
-
-    def simple_augmentation(self, df:pd.DataFrame, label:float) -> pd.DataFrame:
-        """라벨 >= label인 데이터 단순 증강. AugmentationV1에서 사용됨.
-
-        Args:
-            df (pd.DataFrame): 데이터를 증강할 DataFrame
-            label (float): 증강할 라벨의 범위(label 이상)
-
-        Returns:
-            pd.DataFrame: 증강된 DataFrame
-        """
-        df_change = df.copy()
-        df_top = df_change[df_change['label'] >= label]
-        df_augment = pd.concat([df_change, df_top])
-        return df_augment
-
     def mask_nnp(self, sentence:str) -> str:
         """고유명사, 외래어 masking 
 
@@ -441,11 +547,11 @@ class KorEDAAugmentaion() :
 
 
 class Path(Enum):
-    TRAIN = '../dataset/train.csv'
-    DEV = '../dataset/dev.csv'
-    TEST = '../dataset/test.csv'
+    TRAIN = '../dataset/train/train.csv'
+    DEV = '../dataset/dev/dev.csv'
+    TEST = '../dataset/test/test.csv'
     WORDNET = '../dataset/wordnet.pickle'
-    SAVE = '../data/'
+    SAVE = '../dataset_aug/'
 
 
 if __name__ == '__main__':
@@ -455,23 +561,22 @@ if __name__ == '__main__':
         Dev, Test 데이터 전처리 : 특수문자 처리, 중복 표현 제거, hanspell(맞춤법 검사) 
     """
     
-    train_augment = BertAugmentaion(data_path=Path.TRAIN.value,
-                                save_path=Path.SAVE.value,
-                                wordnet_path=Path.WORDNET.value)
+    train_augment = Adverb_Augmentation(data_path=Path.TRAIN.value, save_path=Path.SAVE.value)
+    train_augment.augmentation()
     
-    dev_augment = BertAugmentaion(data_path=Path.DEV.value,
-                                save_path=Path.SAVE.value,
-                                wordnet_path=Path.WORDNET.value)
+    # dev_augment = BertAugmentaion(data_path=Path.DEV.value,
+    #                             save_path=Path.SAVE.value,
+    #                             wordnet_path=Path.WORDNET.value)
     
-    test_augment = BertAugmentaion(data_path=Path.TEST.value,
-                                save_path=Path.SAVE.value,
-                                wordnet_path=Path.WORDNET.value)
+    # test_augment = BertAugmentaion(data_path=Path.TEST.value,
+    #                             save_path=Path.SAVE.value,
+    #                             wordnet_path=Path.WORDNET.value)
     
     # TRAIN 데이터 증강
-    train_augment.train_augmentationV1(file_name='train_augmentV1.csv', save=True)
+    # train_augment.train_augmentationV1(file_name='train_augmentV1.csv', save=True)
     # train_augment.train_augmentationV2(file_name='train_augmentV2.csv', save=True)
     # train_augment.train_augmentationV3(file_name='train_augmentV3.csv', save=True)
     
     # DEV, TEST 전처리(맞춤법 검사, 특수문자 처리)
-    dev_augment.val_preprocessing(file_name='dev_spellcheck.csv')
-    test_augment.val_preprocessing(file_name='test_spellcheck.csv')
+    # dev_augment.val_preprocessing(file_name='dev_spellcheck.csv')
+    # test_augment.val_preprocessing(file_name='test_spellcheck.csv')
