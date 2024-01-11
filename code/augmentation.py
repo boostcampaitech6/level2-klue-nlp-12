@@ -12,6 +12,7 @@ from typing import Union
 # from hanspell import spell_checker
 # from konlpy.tag import Okt, Kkma
 
+import time
 from bs4 import BeautifulSoup
 from selenium import webdriver
 import random
@@ -85,7 +86,7 @@ class Adverb_Augmentation():
                 gloss = self._get_gloss(adverb)
                 sentence = sentence.replace(adverb, gloss)
             except:
-                print('except: ', sentence)
+                # print('except: ', sentence)
                 pass
         return sentence
 
@@ -111,15 +112,19 @@ class Adverb_Augmentation():
         features.remove("no_relation")
 
         augdf_list = []
+        self.create_folder(self.save_path)
 
         # no_relation을 제외한 feature마다 돌아가면서
         for feat in features :
-            print("Now processing feature {}...".format(feat))
-            
+            start_time = time.time()
+            print("Now processing feature {}...".format(feat), end="")
             df_select = df_orig[df_orig["label"] == feat]
+            print("{} rows will be processed.".format(df_select.shape[0]))
             df_aug = self.get_augmented_df(df_select)
             augdf_list.append(df_aug)
+            print("--- %s seconds ---" % (time.time() - start_time))
             
+        print("All features processed. Concat and Saving...")
         df_concat = self.concat(augdf_list)
         df_augment = self.concat(df_orig, df_concat)
 
@@ -157,7 +162,7 @@ class Adverb_Augmentation():
             return -1
         end_idx = start_idx + len(sub_word) - 1
 
-        result = json.loads(row["subject_entity"].replace("'", "\""))
+        result = {'word' : sub_word}
         result["start_idx"] = start_idx
         result["end_idx"] = end_idx
 
@@ -171,7 +176,7 @@ class Adverb_Augmentation():
             return -1
         end_idx = start_idx + len(obj_word) - 1
 
-        result = json.loads(row["object_entity"].replace("'", "\""))
+        result = {'word' : obj_word}
         result["start_idx"] = start_idx
         result["end_idx"] = end_idx
 
