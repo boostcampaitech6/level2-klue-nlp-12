@@ -2,6 +2,8 @@ import pickle as pickle
 import os
 import pandas as pd
 import torch
+import re
+import json
 
 
 class RE_Dataset(torch.utils.data.Dataset):
@@ -20,15 +22,29 @@ class RE_Dataset(torch.utils.data.Dataset):
 
 def preprocessing_dataset(dataset):
   """ 처음 불러온 csv 파일을 원하는 형태의 DataFrame으로 변경 시켜줍니다."""
-  subject_entity = []
-  object_entity = []
-  for i,j in zip(dataset['subject_entity'], dataset['object_entity']):
-    i = i[1:-1].split(',')[0].split(':')[1]
-    j = j[1:-1].split(',')[0].split(':')[1]
+  # 1. json 형태로 dict를 변환하기 위해 '를 "로 변경
+  # 2. json 형태 변환 이전에 word에 해당하는 부분의 "를 모두 제거하고 단어의 시작과 끝에만 "를 추가
+  # 3. json 형태로 load 이후 DataFrame으로 변환
 
-    subject_entity.append(i)
-    object_entity.append(j)
-  out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':subject_entity,'object_entity':object_entity,'label':dataset['label'],})
+  # 1
+  sub = [s.replace("'", '"') for s in dataset['subject_entity']]
+  obj = [o.replace("'", '"') for o in dataset['object_entity']]
+
+  # 2
+  for idx, sentence in enumerate(sub):
+      search = re.search(r'\s".+",', sentence)
+      sub[idx] = sentence[:search.span()[0]+1] + '"' + sentence[search.span()[0]+1:search.span()[1]-1].replace('"', '') + '"' + sentence[search.span()[1]-1:]
+
+  for idx, sentence in enumerate(obj):
+      search = re.search(r'\s".+",', sentence)
+      obj[idx] = sentence[:search.span()[0]+1] + '"' + sentence[search.span()[0]+1:search.span()[1]-1].replace('"', '') + '"' + sentence[search.span()[1]-1:]
+  
+  # 3
+  sub = pd.DataFrame([json.loads(s) for s in sub])
+  obj = pd.DataFrame([json.loads(o) for o in obj])
+
+  out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':sub['word'],'object_entity':obj['word'],'label':dataset['label'],
+                              'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'obj_start_idx':obj['start_idx'], 'obj_end_idx':obj['end_idx'],})
   return out_dataset
 
 def load_data(dataset_dir):
