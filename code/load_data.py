@@ -44,7 +44,7 @@ def preprocessing_dataset(dataset):
   obj = pd.DataFrame([json.loads(o) for o in obj])
 
   out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':sub['word'],'object_entity':obj['word'],'label':dataset['label'],
-                              'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'obj_start_idx':obj['start_idx'], 'obj_end_idx':obj['end_idx'],})
+                                'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'sub_type':sub['type'], 'obj_start_idx':obj['start_idx'],'obj_end_idx':obj['end_idx'], 'obj_type':obj['type']})
   return out_dataset
 
 def load_data(dataset_dir):
@@ -57,17 +57,42 @@ def load_data(dataset_dir):
 def tokenized_dataset(dataset, tokenizer):
   """ tokenizer에 따라 sentence를 tokenizing 합니다."""
   concat_entity = []
+  sentences = []
+
+  # tokenizer.add_special_tokens({'additional_special_tokens': ['<SPC>', '</SPC>']})
+  tokenizer.add_special_tokens({'additional_special_tokens': ['[ORG]', '[PER]', '[DAT]', '[LOC]', '[POH]', '[NOH]']})
+
   for e01, e02 in zip(dataset['subject_entity'], dataset['object_entity']):
-    temp = ''
-    temp = e01 + '[SEP]' + e02
-    concat_entity.append(temp)
+      temp = ''
+      temp = e01 + '[SEP]' + e02
+      concat_entity.append(temp)
+
+  for s_st, s_end, o_st, o_end, s, s_t, o_t in zip(dataset['sub_start_idx'], dataset['sub_end_idx'], dataset['obj_start_idx'], dataset['obj_end_idx'], dataset['sentence'], dataset['sub_type'], dataset['obj_type']):
+      temp = ''
+
+      # 스페셜 토큰 추가 (타입을 단어 앞에)
+      s_t = '[' + s_t + ']'
+      o_t = '[' + o_t + ']'
+      if s_st < o_st:
+          temp = s[:s_st] + s_t + s[s_st:o_st] + o_t + s[o_st:]
+      else:
+          temp = s[:o_st] + o_t + s[o_st:s_st] + s_t + s[s_st:]
+
+      # 스페셜 토큰 추가 (양쪽에)
+      # if s_st < o_st:
+      #     temp = s[:s_st] + '<SPC>' + s[s_st:s_end+1] + '</SPC>' + s[s_end+1:o_st] + '<SPC>' + s[o_st:o_end+1] + '</SPC>' + s[o_end+1:]
+      # else:
+      #     temp = s[:o_st] + '<SPC>' + s[o_st:o_end+1] + '</SPC>' + s[o_end+1:s_st] + '<SPC>' + s[s_st:s_end+1] + '</SPC>' + s[s_end+1:]
+      sentences.append(temp)
+
   tokenized_sentences = tokenizer(
       concat_entity,
-      list(dataset['sentence']),
+      sentences,
       return_tensors="pt",
       padding=True,
       truncation=True,
       max_length=256,
       add_special_tokens=True,
       )
+  
   return tokenized_sentences
