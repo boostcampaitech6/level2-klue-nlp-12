@@ -5,6 +5,8 @@ from typing import Any
 from tqdm.auto import tqdm
 import numpy as np
 import pandas as pd
+import re
+import json
 import pickle
 
 from sklearn.metrics import accuracy_score
@@ -104,17 +106,18 @@ def compute_metrics(pred, labels):
 
 class Dataset(torch.utils.data.Dataset):
     """ Dataset 구성을 위한 class."""
-    def __init__(self, pair_dataset, labels):
+    def __init__(self, pair_dataset, labels = []):
         self.pair_dataset = pair_dataset
         self.labels = labels
     
     def __getitem__(self, idx):
         item = {key: val[idx].clone().detach() for key, val in self.pair_dataset.items()}
-        item['labels'] = torch.tensor(self.labels[idx])
+        if len(self.labels) != 0:
+            item['labels'] = torch.tensor(self.labels[idx])
         return item
     
     def __len__(self):
-        return len(self.labels)
+        return len(self.pair_dataset['input_ids'])
     
 class Dataloader(pl.LightningModule):
     def __init__(self, model_name, batch_size, shuffle, train_path, dev_path, test_path, predict_path):
@@ -135,39 +138,73 @@ class Dataloader(pl.LightningModule):
 
         self.tokenizer = transformers.AutoTokenizer.from_pretrained(self.model_name)
 
-    def tokenizing(self, dataframe):
-        concat_entity = []
-        for e01, e02 in zip(dataframe['subject_entity'], dataframe['object_entity']):
-            temp = ''
-            temp = e01 + '[SEP]' + e02
-            concat_entity.append(temp)
-        tokenized_sentences = self.tokenizer(
-            concat_entity,
-            list(dataframe['sentence']),
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=256,
-            add_special_tokens=True,
-            )
-        
-        return tokenized_sentences
-    
-    def preprocessing(self, dataset):
-        """ 처음 불러온 csv 파일을 원하는 형태의 DataFrame으로 변경 시켜줍니다."""
-        subject_entity = []
-        object_entity = []
-        for i,j in zip(dataset['subject_entity'], dataset['object_entity']):
-            i = i[1:-1].split(',')[0].split(':')[1]
-            j = j[1:-1].split(',')[0].split(':')[1]
+    def add_special_tokens(self):
+        self.tokenizer.add_special_tokens({'additional_special_tokens': ['<SPC>', '</SPC>']})
 
-            subject_entity.append(i)
-            object_entity.append(j)
-        out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':subject_entity,'object_entity':object_entity,'label':dataset['label'],})
+    def tokenizing(self, dataframe):
+            concat_entity = []
+            sentences = []
+
+            for e01, e02 in zip(dataframe['subject_entity'], dataframe['object_entity']):
+                temp = ''
+                temp = e01 + '[SEP]' + e02
+                concat_entity.append(temp)
+
+            for s_st, s_end, o_st, o_end, s in zip(dataframe['sub_start_idx'], dataframe['sub_end_idx'], dataframe['obj_start_idx'], dataframe['obj_end_idx'], dataframe['sentence']):
+                temp = ''
+                if s_st < o_st:
+                    temp = s[:s_st] + '<SPC>' + s[s_st:s_end+1] + '</SPC>' + s[s_end+1:o_st] + '<SPC>' + s[o_st:o_end+1] + '</SPC>' + s[o_end+1:]
+                else:
+                    temp = s[:o_st] + '<SPC>' + s[o_st:o_end+1] + '</SPC>' + s[o_end+1:s_st] + '<SPC>' + s[s_st:s_end+1] + '</SPC>' + s[s_end+1:]
+                sentences.append(temp)
+
+            tokenized_sentences = self.tokenizer(
+                concat_entity,
+                sentences,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=256,
+                add_special_tokens=True,
+                )
+            
+            return tokenized_sentences
+
+    def preprocessing(self, dataset, type='train'):
+        """ 처음 불러온 csv 파일을 원하는 형태의 DataFrame으로 변경 시켜줍니다."""
+        # 1. json 형태로 dict를 변환하기 위해 '를 "로 변경
+        # 2. json 형태 변환 이전에 word에 해당하는 부분의 "를 모두 제거하고 단어의 시작과 끝에만 "를 추가
+        # 3. json 형태로 load 이후 DataFrame으로 변환
+
+        # 1
+        sub = [s.replace("'", '"') for s in dataset['subject_entity']]
+        obj = [o.replace("'", '"') for o in dataset['object_entity']]
+
+        # 2
+        for idx, sentence in enumerate(sub):
+            search = re.search(r'\s".+",', sentence)
+            sub[idx] = sentence[:search.span()[0]+1] + '"' + sentence[search.span()[0]+1:search.span()[1]-1].replace('"', '') + '"' + sentence[search.span()[1]-1:]
+
+        for idx, sentence in enumerate(obj):
+            search = re.search(r'\s".+",', sentence)
+            obj[idx] = sentence[:search.span()[0]+1] + '"' + sentence[search.span()[0]+1:search.span()[1]-1].replace('"', '') + '"' + sentence[search.span()[1]-1:]
+        
+        # 3
+        sub = pd.DataFrame([json.loads(s) for s in sub])
+        obj = pd.DataFrame([json.loads(o) for o in obj])
+
+        if type == 'train':
+            out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':sub['word'],'object_entity':obj['word'],'label':dataset['label'],
+                                        'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'obj_start_idx':obj['start_idx'], 'obj_end_idx':obj['end_idx'],})
+        else:
+            out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':sub['word'],'object_entity':obj['word'],
+                                        'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'obj_start_idx':obj['start_idx'], 'obj_end_idx':obj['end_idx'],})
         
         return out_dataset
     
     def setup(self, stage='fit'):
+        self.add_special_tokens()
+
         if stage == 'fit':
             train = pd.read_csv(self.train_path)
             val = pd.read_csv(self.dev_path)
@@ -190,21 +227,21 @@ class Dataloader(pl.LightningModule):
             self.test_dataset = Dataset(self.tokenizing(test), test_label)
 
             predict = pd.read_csv(self.predict_path)
-            predict = self.preprocessing(predict)
+            predict = self.preprocessing(predict, 'predict')
 
-            self.predict_dataset = self.tokenizing(predict)
+            self.predict_dataset = Dataset(self.tokenizing(predict))
     
     def train_dataloader(self):
         return torch.utils.data.DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=self.shuffle)
     
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=self.shuffle)
+        return torch.utils.data.DataLoader(self.val_dataset, batch_size=self.batch_size)
     
     def test_dataloader(self):
-        return torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size, shuffle=self.shuffle)
+        return torch.utils.data.DataLoader(self.test_dataset, batch_size=self.batch_size)
     
     def predict_dataloader(self):
-        return torch.utils.data.DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=self.shuffle)
+        return torch.utils.data.DataLoader(self.predict_dataset, batch_size=self.batch_size)
     
 
 class Model(pl.LightningModule):
@@ -290,12 +327,15 @@ if __name__ == "__main__":
 
     model = Model(args.model_name, args.learning_rate)
 
+    # dataloader.add_special_tokens()
+    model.plm.resize_token_embeddings(len(dataloader.tokenizer))
+
     wandb_logger = WandbLogger(name=args.logger_name, project='level_2_RE', save_dir='./logs') #CUSTOMIZE wandb logger name and save directory
 
     early_stop_callback = EarlyStopping(
-        monitor='val_loss',
+        monitor='val micro f1 score',
         min_delta=0.001,
-        patience=3,
+        patience=10,
         verbose=False,
         mode='max'
     )
