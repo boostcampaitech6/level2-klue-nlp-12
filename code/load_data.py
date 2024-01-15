@@ -60,7 +60,9 @@ def tokenized_dataset(dataset, tokenizer):
   sentences = []
 
   # tokenizer.add_special_tokens({'additional_special_tokens': ['<SPC>', '</SPC>']})
-  tokenizer.add_special_tokens({'additional_special_tokens': ['[ORG]', '[PER]', '[DAT]', '[LOC]', '[POH]', '[NOH]']})
+  # tokenizer.add_special_tokens({'additional_special_tokens': ['[ORG]', '[PER]', '[DAT]', '[LOC]', '[POH]', '[NOH]']})
+  tokenizer.add_special_tokens({'additional_special_tokens': ['[ORG]', '[PER]', '[DAT]', '[LOC]', '[POH]', '[NOH]', '[/ORG]', '[/PER]', '[/DAT]', '[/LOC]', '[/POH]', '[/NOH]']})
+
 
   for e01, e02 in zip(dataset['subject_entity'], dataset['object_entity']):
       temp = ''
