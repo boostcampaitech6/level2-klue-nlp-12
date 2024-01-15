@@ -70,13 +70,24 @@ def tokenized_dataset(dataset, tokenizer):
   for s_st, s_end, o_st, o_end, s, s_t, o_t in zip(dataset['sub_start_idx'], dataset['sub_end_idx'], dataset['obj_start_idx'], dataset['obj_end_idx'], dataset['sentence'], dataset['sub_type'], dataset['obj_type']):
       temp = ''
 
-      # 스페셜 토큰 추가 (타입을 단어 앞에)
-      s_t = '[' + s_t + ']'
-      o_t = '[' + o_t + ']'
+      # 스페셜 토큰 추가 #1
+      # s_t = '[' + s_t + ']'
+      # o_t = '[' + o_t + ']'
+      # if s_st < o_st:
+      #     temp = s[:s_st] + s_t + s[s_st:o_st] + o_t + s[o_st:]
+      # else:
+      #     temp = s[:o_st] + o_t + s[o_st:s_st] + s_t + s[s_st:]
+
+      # 스페셜 토큰 추가 #2
+      s_t_st = '[' + s_t + ']'
+      o_t_st = '[' + o_t + ']'
+      
+      s_t_ed = '[/' + s_t + ']'
+      o_t_ed = '[/' + o_t + ']'
       if s_st < o_st:
-          temp = s[:s_st] + s_t + s[s_st:o_st] + o_t + s[o_st:]
+          temp = s[:s_st] + s_t_st + s[s_st:s_end+1] + s_t_ed + s[s_end+1:o_st] + o_t_st + s[o_st:o_end+1] + o_t_ed + s[o_end+1:]
       else:
-          temp = s[:o_st] + o_t + s[o_st:s_st] + s_t + s[s_st:]
+          temp = s[:o_st] + o_t_st + s[o_st:o_end+1] + o_t_ed + s[o_end+1:s_st] + s_t_st + s[s_st:s_end+1] + s_t_ed + s[s_end+1:]
 
       # 스페셜 토큰 추가 (양쪽에)
       # if s_st < o_st:
