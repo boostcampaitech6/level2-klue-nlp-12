@@ -15,6 +15,11 @@ from timm.optim import AdamP
 #Schedular library
 from torch.optim.lr_scheduler import LambdaLR, OneCycleLR
 
+class CustomTrainingArguments(TrainingArguments):
+  def create_optimizer_and_scheduler(self, num_training_steps: int):
+    optimizer = torch.optim.AdamP(self.model.parameters(), lr=2e-5)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01, num_training_steps=num_training_steps)
+    return optimizer, scheduler
 
 
 def seed_everything(seed = 42) :
@@ -155,14 +160,14 @@ def train():
   ### ========================================================================
   
   # https://huggingface.co/transformers/main_classes/trainer.html#trainingarguments
-
+  '''
   training_args = TrainingArguments(
     output_dir=args.output_dir,                   # output directory
     save_total_limit=args.save_total_limit,       # number of total save model.
     save_steps=args.eval_steps,                   # model saving step.
     num_train_epochs=args.epoch,                  # total number of training epochs
     # optimizer 종류는 args에서도 변경 할 수 있지만 default로 AdamW로 되어 있고 AdamP는 포함이 안되어 있는 것 같아서 따로 함수로 만들었어요.
-    # learning_rate=args.lr,                        # learning_rate
+    #learning_rate=args.lr,                        # learning_rate
     per_device_train_batch_size=args.batch_size,  # batch size per device during training
     per_device_eval_batch_size=args.batch_size,   # batch size for evaluation
     #training_args에 있는 스케쥴러의 경우 linear로 고정 되어 있는것 같아서 제가 새로운 함수 추가 했어요
@@ -177,32 +182,43 @@ def train():
     eval_steps = args.eval_steps,                 # evaluation step.
     load_best_model_at_end = True 
   )
-
+  '''
   ### ========================================================================
   ### optimizer and schedular 
   ### ========================================================================
   
   #optimizer의 경우 논문을 읽어보고 AdamP가 제일 좋은 것 같아서 일단 AdamP로 설정했지만 timm (https://timm.fast.ai/Optimizers)에 있는 다른 다양한 optimizer들을 적용할 수 있어요.
-  optimizer = AdamP(model.parameters(), lr=0.001)
+  #optimizer = AdamP(model.parameters(), lr=0.001)
 
   #더 다양한 schedular들도 추가 할 수 있습니다.
-  scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 0.95 ** epoch)
+  #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 0.95 ** epoch)
   #scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=10, epochs=10,anneal_strategy='cos')
   
+
+
+  training_args = CustomTrainingArguments(
+    output_dir=args.output_dir,
+    save_total_limit=args.save_total_limit,
+    save_steps=args.eval_steps,
+    num_train_epochs=args.epoch,
+    per_device_train_batch_size=args.batch_size,
+    per_device_eval_batch_size=args.batch_size,
+    logging_dir='./logs',
+    logging_steps=100,
+    evaluation_strategy='steps',
+    eval_steps=args.eval_steps,
+    load_best_model_at_end=True
+)
 
   trainer = Trainer(
     model=model,                         # the instantiated 🤗 Transformers model to be trained
     args=training_args,                  # training arguments, defined above
     train_dataset=RE_train_dataset,         # training dataset
     eval_dataset=RE_dev_dataset,             # evaluation dataset
-    optimizers= (optimizer,scheduler),     #optimizer and schedular
     compute_metrics=compute_metrics         # define metrics function
   )
 
   
-  
- 
-
   # train model
   trainer.train()
   model.save_pretrained('./best_model')
