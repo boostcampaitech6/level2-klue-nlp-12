@@ -31,7 +31,7 @@ def prepare_dataset_for_pretraining(tokenizer, train_path, dev_path):
     train_dataset = RePreDataset(
         tokenizer=tokenizer,
         data=train_path,
-        block_size=512,
+        block_size=128,
     )
 
     # set mlm task
@@ -43,7 +43,7 @@ def prepare_dataset_for_pretraining(tokenizer, train_path, dev_path):
     eval_dataset = RePreDataset(
         tokenizer=tokenizer,
         data=dev_path,
-        block_size=512,
+        block_size=128,
     )
 
     return train_dataset, data_collator, eval_dataset
@@ -174,6 +174,8 @@ def train():
         seed = args.seed,
         # report_to = 'wandb',
     )
+
+    training_args.set_optimizer(name="adamw_torch", beta1=0.8, beta2=0.999, weight_decay = 0.01, learning_rate = 1e-04)
 
     trainer = Trainer(
         model=model,
