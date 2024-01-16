@@ -10,11 +10,13 @@ import torch
 
 class RePreDataset(Dataset):
     
-    def __init__(self, tokenizer, data_path, block_size) :
+    def __init__(self, tokenizer, data_path_list, block_size) :
 
-        # data path에서 데이터를 받아온 후에 sentence series를 list로 변환해준다.
-        df = pd.read_csv(data_path)
+        # path list를 전부 concat 후, sentence series를 list로 변환
+        df_list = [pd.read_csv(path) for path in data_path_list]
+        df = pd.concat(df_list)
         sentlist = df.sentence.to_list()
+
         batch_encoding = tokenizer(sentlist, truncation=True, max_length=block_size)
         self.examples = batch_encoding["input_ids"]
         self.examples = [{"input_ids": torch.tensor(ex, dtype=torch.long)} for ex in self.examples]
@@ -30,7 +32,7 @@ def prepare_dataset_for_pretraining(tokenizer, train_path, dev_path):
     
     train_dataset = RePreDataset(
         tokenizer=tokenizer,
-        data=train_path,
+        data=[train_path, dev_path],
         block_size=128,
     )
 
@@ -42,7 +44,7 @@ def prepare_dataset_for_pretraining(tokenizer, train_path, dev_path):
 
     eval_dataset = RePreDataset(
         tokenizer=tokenizer,
-        data=dev_path,
+        data=[dev_path],
         block_size=128,
     )
 
@@ -99,12 +101,12 @@ def parse_arguments() :
     
     parser.add_argument('--epoch', type=int, default=50)
     parser.add_argument('--batch_size', type=int, default=32)
-    parser.add_argument('--lr', type=float, default=5e-5)
+    parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--seed', type=int, default=486)
     parser.add_argument('--accumalation_step', type=int, default=1)
     
     
-    parser.add_argument('--save_total_limit', type=int, default=10)
+    parser.add_argument('--save_total_limit', type=int, default=5)
     parser.add_argument('--eval_steps', type=int, default=1000)
     parser.add_argument('--warmup_steps', type=int, default=500)
     parser.add_argument('--weight_decay', type=int, default=0.01)
