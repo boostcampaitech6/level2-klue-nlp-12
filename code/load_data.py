@@ -86,7 +86,7 @@ def tokenized_dataset(dataset, tokenizer, options='default'):
           temp = ''
 
           if s_st < o_st:
-              temp = s[:s_st] + type_list[s_t] + s[s_st:s_end+1] + type_list[o_t] + s[s_end+1:o_st] + type_list[o_t] + s[o_st:o_end+1] + type_list[o_t] + s[o_end+1:]
+              temp = s[:s_st] + type_list[s_t] + s[s_st:s_end+1] + type_list[s_t] + s[s_end+1:o_st] + type_list[o_t] + s[o_st:o_end+1] + type_list[o_t] + s[o_end+1:]
           else:
               temp = s[:o_st] + type_list[o_t] + s[o_st:o_end+1] + type_list[o_t] + s[o_end+1:s_st] + type_list[s_t] + s[s_st:s_end+1] + type_list[s_t] + s[s_end+1:]
           sentences.append(temp)
