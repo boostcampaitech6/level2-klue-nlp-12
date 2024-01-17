@@ -1,5 +1,6 @@
 import argparse
 import pandas as pd
+import numpy as np
 from operator import add
 
 def list_of_strings(arg):
@@ -26,28 +27,27 @@ def main():
     args = parse_arguments()
 
     # 데이터프레임을 불러옵니다 -> list(pd.DataFrame)
-    dataframes = call_csv_files(args.paths)
+    dataframes = call_csv_files(args.str_list)
     num_of_df = len(dataframes)
     
-    # 데이터프레임의 probs를 list(float)로 변환
-    for df in dataframes:
-        df['probs']  = df['probs'].apply(lambda x: [float(i) for i in x.strip('][').split(', ')])
+    # 데이터프레임의 probs를 numpy.ndarray(float)로 변환
+    for idx, df in enumerate(dataframes):
+        dataframes[idx]['probs']  = df['probs'].apply(lambda x: np.array([float(i) for i in x.strip('][').split(', ')]))
 
     # 마지막 데이터프레임을 기본 데이터프레임으로 초기화 -> && 마지막에 반환할 데이터프레임
     default_df = dataframes[-1]
 
     # ensembling
     for df in dataframes[:-1]:
-        for (idx, row1), (_, row2) in zip(default_df.iterrows(), df.iterrows()):
-            default_df.loc[idx, 'probs'] = list( map( add, row1['probs'], row2['probs'] ))
+        default_df['probs'] = default_df['probs'] + df['probs']
     
     # 각 probs를 num_of_df로 나누어 평균으로 만듦
-    for idx, row in default_df.iterrows():
-        default_df.loc[idx, 'probs'] = [[val/num_of_df for val in lst] for lst in row['probs']]
+    default_df['probs'] = default_df['probs']/num_of_df
     
     # 새로운 probs에 맞게 pred_label 변경
     for idx, row in default_df.iterrows():
-        default_df.loc[idx, 'pred_label'] = idx2label[row['probs'].index(max(row['probs']))]
+        default_df.loc[idx, 'pred_label'] = idx2label[int(row['probs'].argmax())]
+    
     
     # 이름만 바꾸기
     ensembled_df = default_df
