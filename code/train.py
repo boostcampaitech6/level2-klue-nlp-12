@@ -93,6 +93,8 @@ def parse_arguments() :
   parser.add_argument('--warmup_steps', type=int, default=500)
   parser.add_argument('--weight_decay', type=int, default=0.01)
 
+  parser.add_argument('--tokenizing_option', type=str, default='default')
+
   args = parser.parse_args()
 
   return args
@@ -134,8 +136,8 @@ def train():
   dev_label = label_to_num(dev_dataset['label'].values)
 
   # tokenizing dataset
-  tokenized_train = tokenized_dataset(train_dataset, tokenizer)
-  tokenized_dev = tokenized_dataset(dev_dataset, tokenizer)
+  tokenized_train = tokenized_dataset(train_dataset, tokenizer, args.tokenizing_option)
+  tokenized_dev = tokenized_dataset(dev_dataset, tokenizer, args.tokenizing_option)
 
   # make dataset for pytorch.
   RE_train_dataset = RE_Dataset(tokenized_train, train_label)
