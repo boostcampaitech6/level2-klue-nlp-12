@@ -6,6 +6,8 @@ from operator import add
 import torch
 import torch.nn.functional as F
 
+from train import klue_re_micro_f1
+
 def list_of_strings(arg):
     return arg.split(',')
 
@@ -19,6 +21,28 @@ def call_csv_files(paths):
         df_list.append(df)
     return df_list
 
+
+def compute_metrics(df_pred, df_label) :
+
+    label_list = ['no_relation', 'org:top_members/employees', 'org:members',
+       'org:product', 'per:title', 'org:alternate_names',
+       'per:employee_of', 'org:place_of_headquarters', 'per:product',
+       'org:number_of_employees/members', 'per:children',
+       'per:place_of_residence', 'per:alternate_names',
+       'per:other_family', 'per:colleagues', 'per:origin', 'per:siblings',
+       'per:spouse', 'org:founded', 'org:political/religious_affiliation',
+       'org:member_of', 'per:parents', 'org:dissolved',
+       'per:schools_attended', 'per:date_of_death', 'per:date_of_birth',
+       'per:place_of_birth', 'per:place_of_death', 'org:founded_by',
+       'per:religion']
+
+    labels = df_label.label.tolist()
+    labels = [label_list.index(ele) for ele in labels]
+
+    preds = df_pred.pred_label.tolist()
+    preds = [label_list.index(ele) for ele in preds]
+
+    print("micro F1 score : ".format(klue_re_micro_f1(labels, preds)))
 
 # ==========================================================================
 #                                   mean
@@ -173,6 +197,9 @@ def parse_arguments() :
     parser.add_argument('--output_path', type=str, default='./prediction/output.csv')
     parser.add_argument('--technique', type=str, default='mean') #    options:    mean || weighted_sum || softmax
 
+    parser.add_argument('--dev_dir', type=str, default='../dataset/dev/dev_sorted.csv')
+
+
     args = parser.parse_args()
     return args
 
@@ -189,5 +216,7 @@ if __name__ == '__main__':
         df = ensemble_weighted_sum(args.str_list, args.weight_list)
     elif args.technique == 'softmax':
         df = ensemble_weight(args.str_list, args.weight_list, softmax=True)
+
+    compute_metrics(df, pd.read_csv(args.dev_dir))
 
     df.to_csv(f'{args.output_path}', index=False)
