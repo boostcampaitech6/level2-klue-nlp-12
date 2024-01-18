@@ -94,6 +94,7 @@ def parse_arguments() :
   parser.add_argument('--weight_decay', type=int, default=0.01)
 
   parser.add_argument('--tokenizing_option', type=str, default='default')
+  parser.add_argument('--preprocessing_option', type=str, default='default')
 
   args = parser.parse_args()
 
@@ -129,8 +130,8 @@ def train():
   ### 데이터셋 준비
   ### ========================================================================
   # load dataset
-  train_dataset = load_data(args.train_dir)
-  dev_dataset = load_data(args.dev_dir) # validation용 데이터는 따로 만드셔야 합니다.
+  train_dataset = load_data(args.train_dir, args.preprocessing_option)
+  dev_dataset = load_data(args.dev_dir, args.preprocessing_option) # validation용 데이터는 따로 만드셔야 합니다.
 
   train_label = label_to_num(train_dataset['label'].values)
   dev_label = label_to_num(dev_dataset['label'].values)
