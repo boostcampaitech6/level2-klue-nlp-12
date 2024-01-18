@@ -273,6 +273,8 @@ if __name__ == '__main__':
         df = ensemble_weighted_sum(args.str_list, args.weight_list)
     elif args.technique == 'softmax':
         df = ensemble_weight(args.str_list, args.weight_list, softmax=True)
+    elif args.technique == 'hardvote':
+        df = ensembel_hardvote(args.str_list)
 
     compute_metrics(df, pd.read_csv(args.dev_dir))
 
