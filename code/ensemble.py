@@ -42,7 +42,7 @@ def compute_metrics(df_pred, df_label) :
     preds = df_pred.pred_label.tolist()
     preds = [label_list.index(ele) for ele in preds]
 
-    print("micro F1 score : ".format(klue_re_micro_f1(labels, preds)))
+    print("micro F1 score : {}".format(round(klue_re_micro_f1(labels, preds), 4)))
 
 # ==========================================================================
 #                                   mean
