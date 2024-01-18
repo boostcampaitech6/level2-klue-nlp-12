@@ -67,12 +67,22 @@ def ensemble_mean(paths):
 # ==========================================================================
 def ensemble_weighted_sum(paths, weights):
     
+    idx2label = {0: 'no_relation', 1: 'org:top_members/employees', 2: 'org:members', 3: 'org:product', 4: 'per:title',
+                 5: 'org:alternate_names', 6: 'per:employee_of', 7: 'org:place_of_headquarters', 8: 'per:product', 9: 'org:number_of_employees/members', 
+                 10: 'per:children', 11: 'per:place_of_residence', 12: 'per:alternate_names', 13: 'per:other_family', 14: 'per:colleagues', 
+                 15: 'per:origin', 16: 'per:siblings', 17: 'per:spouse', 18: 'org:founded', 19: 'org:political/religious_affiliation', 
+                 20: 'org:member_of', 21: 'per:parents', 22: 'org:dissolved', 23: 'per:schools_attended', 24: 'per:date_of_death',
+                 25: 'per:date_of_birth', 26: 'per:place_of_birth', 27: 'per:place_of_death', 28: 'org:founded_by', 29: 'per:religion'}
+
     # 데이터프레임을 불러옵니다 -> list(pd.DataFrame)
     dataframes = call_csv_files(paths)
-    num_of_df = len(dataframes)
     
     # 가중치 리스트를 변수에 저장합니다
     weight_list = weights
+    
+    # 가중치가 정수로 주어졌을 경우 합이 1이 되도록 나누어줍니다
+    if sum(weight_list) > 1:
+        weight_list = [val/sum(weight_list) for val in weight_list]
 
     # 데이터프레임의 probs를 numpy.ndarray(float)로 변환합니다
     for idx, df in enumerate(dataframes):
@@ -83,9 +93,20 @@ def ensemble_weighted_sum(paths, weights):
     default_df['probs'] = default_df['probs'] * weight_list[-1]
     
     # 각 데이터프레임에 가중치를 곱합니다
+    for idx, df in enumerate(dataframes[:-1]):
+        default_df['probs'] = default_df['probs'] + df['probs'] * weight_list[idx]
     
+    # 새로운 probs에 맞게 pred_label 변경합니다
+    for idx, row in default_df.iterrows():
+        default_df.loc[idx, 'pred_label'] = idx2label[int(row['probs'].argmax())]
 
-    return
+    # type(probs) np.adarray -> list(float)
+    default_df['probs'] = default_df['probs'].map(np.ndarray.tolist)
+
+    # 이름만 바꾸
+    ensembled_df = default_df
+
+    return ensembled_df
 
 
 
@@ -148,7 +169,7 @@ def parse_arguments() :
     parser = argparse.ArgumentParser(description='Argparse')
 
     parser.add_argument('--str_list', type=list_of_strings)
-    parser.add_argument('--weight_list', type=list_of_weights)
+    parser.add_argument('--weight_list', type=list_of_weights) #      정수 입력값도 받습니다
     parser.add_argument('--output_path', type=str, default='./prediction/output.csv')
     parser.add_argument('--technique', type=str, default='mean') #    options:    mean || weighted_sum || softmax
 
@@ -165,7 +186,7 @@ if __name__ == '__main__':
     if args.technique == 'mean':
         df = ensemble_mean(args.str_list)
     elif args.technique == 'weighted_sum':
-        df = ensemble_weight(args.str_list, args.weight_list)
+        df = ensemble_weighted_sum(args.str_list, args.weight_list)
     elif args.technique == 'softmax':
         df = ensemble_weight(args.str_list, args.weight_list, softmax=True)
 
