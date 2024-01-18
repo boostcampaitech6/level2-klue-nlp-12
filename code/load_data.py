@@ -44,7 +44,7 @@ def preprocessing_dataset(dataset):
   obj = pd.DataFrame([json.loads(o) for o in obj])
 
   out_dataset = pd.DataFrame({'id':dataset['id'], 'sentence':dataset['sentence'],'subject_entity':sub['word'],'object_entity':obj['word'],'label':dataset['label'],
-                              'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'obj_start_idx':obj['start_idx'], 'obj_end_idx':obj['end_idx'],})
+                              'sub_start_idx':sub['start_idx'], 'sub_end_idx':sub['end_idx'], 'obj_start_idx':obj['start_idx'], 'obj_end_idx':obj['end_idx'], 'sub_type':sub['type'], 'obj_type':obj['type']})
   return out_dataset
 
 def load_data(dataset_dir):
