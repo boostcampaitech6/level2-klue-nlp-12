@@ -49,7 +49,7 @@ def compute_metrics(df_pred, df_label) :
 # ==========================================================================
 def ensemble_mean(paths):
 
-    idx2label = {0: 'no_relation', 1: 'org:top_members/employees', 2: 'org:members', 3: 'org:product', 4: 'per:title',
+    id2label = {0: 'no_relation', 1: 'org:top_members/employees', 2: 'org:members', 3: 'org:product', 4: 'per:title',
                  5: 'org:alternate_names', 6: 'per:employee_of', 7: 'org:place_of_headquarters', 8: 'per:product', 9: 'org:number_of_employees/members', 
                  10: 'per:children', 11: 'per:place_of_residence', 12: 'per:alternate_names', 13: 'per:other_family', 14: 'per:colleagues', 
                  15: 'per:origin', 16: 'per:siblings', 17: 'per:spouse', 18: 'org:founded', 19: 'org:political/religious_affiliation', 
@@ -61,8 +61,8 @@ def ensemble_mean(paths):
     num_of_df = len(dataframes)
     
     # 데이터프레임의 probs를 numpy.ndarray(float)로 변환합니다
-    for idx, df in enumerate(dataframes):
-        dataframes[idx]['probs']  = df['probs'].apply(lambda x: np.array([float(i) for i in x.strip('][').split(', ')]))
+    for id, df in enumerate(dataframes):
+        dataframes[id]['probs']  = df['probs'].apply(lambda x: np.array([float(label) for label in x.strip('][').split(', ')]))
 
     # 마지막 데이터프레임을 기본 데이터프레임으로 초기화합니다 -> && 마지막에 반환할 데이터프레임
     default_df = dataframes[-1]
@@ -75,8 +75,8 @@ def ensemble_mean(paths):
     default_df['probs'] = default_df['probs']/num_of_df
     
     # 새로운 probs에 맞게 pred_label 변경합니다
-    for idx, row in default_df.iterrows():
-        default_df.loc[idx, 'pred_label'] = idx2label[int(row['probs'].argmax())]
+    for id, row in default_df.iterrows():
+        default_df.loc[id, 'pred_label'] = id2label[int(row['probs'].argmax())]
 
     # type(probs) np.adarray -> list(float)
     default_df['probs'] = default_df['probs'].map(np.ndarray.tolist)
@@ -109,8 +109,8 @@ def ensemble_weighted_sum(paths, weights):
         weight_list = [val/sum(weight_list) for val in weight_list]
 
     # 데이터프레임의 probs를 numpy.ndarray(float)로 변환합니다
-    for idx, df in enumerate(dataframes):
-        dataframes[idx]['probs']  = df['probs'].apply(lambda x: np.array([float(i) for i in x.strip('][').split(', ')]))
+    for id, df in enumerate(dataframes):
+        dataframes[id]['probs']  = df['probs'].apply(lambda x: np.array([float(label) for label in x.strip('][').split(', ')]))
 
     # 마지막 데이터프레임을 기본 데이터프레임으로 초기화합니다 -> && 마지막에 반환할 데이터프레임
     default_df = dataframes[-1]
@@ -165,15 +165,15 @@ def ensemble_weight(pathlist, weights, softmax=False) :
         weights = F.softmax(torch.Tensor(weights), dim=0).tolist()
 
     # row마다
-    for idx in range(len(df_list[0])) :
+    for id in range(len(df_list[0])) :
 
         # 확률을 모아서
-        prob_list = [np.array(prob[idx]) for prob in probs_list]
+        prob_list = [np.array(prob[id]) for prob in probs_list]
 
         # 가중합을 누적하고
         final_probs = np.zeros(30)
-        for i, prob in enumerate(prob_list) :
-            final_probs += prob*weights[i]
+        for label, prob in enumerate(prob_list) :
+            final_probs += prob*weights[label]
 
         # 분모로 나눠서
         final_probs /= sum(weights)
@@ -188,6 +188,63 @@ def ensemble_weight(pathlist, weights, softmax=False) :
 
     return ensemble_df
 
+def ensembel_hardvote(pathlist) :
+
+    label_list = ['no_relation', 'org:top_members/employees', 'org:members',
+       'org:product', 'per:title', 'org:alternate_names',
+       'per:employee_of', 'org:place_of_headquarters', 'per:product',
+       'org:number_of_employees/members', 'per:children',
+       'per:place_of_residence', 'per:alternate_names',
+       'per:other_family', 'per:colleagues', 'per:origin', 'per:siblings',
+       'per:spouse', 'org:founded', 'org:political/religious_affiliation',
+       'org:member_of', 'per:parents', 'org:dissolved',
+       'per:schools_attended', 'per:date_of_death', 'per:date_of_birth',
+       'per:place_of_birth', 'per:place_of_death', 'org:founded_by',
+       'per:religion']
+    
+    label2idx = {label:id for id, label in enumerate(label_list)}
+    
+    df_list = [pd.read_csv(path) for path in pathlist]
+
+    probs_list = [df.probs.apply(lambda x: [float(e) for e in x.strip("][").split(", ")]) for df in df_list]
+
+    pred_label_list = []
+    prob_list = []
+
+    df_len = len(df_list[0])
+
+    for id in range(df_len):
+        voting = {}
+        for df in df_list:
+            label = df['pred_label'][id]
+            if label in voting:
+                voting[label] += 1
+            else:
+                voting[label] = 1
+
+        sorted_voting = sorted(voting.items(), key=lambda x: x[1], reverse=True)
+
+        if len(sorted_voting) > 1 and sorted_voting[0][1] == sorted_voting[1][1]:
+            probs = np.zeros(30)
+            for prob in probs_list:
+                probs += np.array(prob[id])
+            probs /= len(df_list)
+        else:
+            probs = np.zeros(30)
+            for label in range(30):
+                if label == label2idx[sorted_voting[0][0]]:
+                    probs[label] = max(probs_list, key=lambda x: x[id][label])[id][label]
+                else:
+                    probs[label] = min(probs_list, key=lambda x: x[id][label])[id][label]
+
+            probs = F.softmax(torch.Tensor(probs), dim=0)
+
+        prob_list.append(str(probs.tolist()))
+        pred_label_list.append(label_list[probs.argmax()])
+    
+    ensemble_df = pd.DataFrame({'id': df_list[0]['id'], 'pred_label': pred_label_list, 'probs': prob_list})
+
+    return ensemble_df
 
 def parse_arguments() :
     parser = argparse.ArgumentParser(description='Argparse')
