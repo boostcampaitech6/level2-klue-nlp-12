@@ -6,5 +6,4 @@ code/best_model
 code/__pycache__
 code/logs
 code/*.csv
-
 dataset/
