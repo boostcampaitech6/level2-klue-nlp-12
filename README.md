@@ -30,7 +30,7 @@
 |--|--|
 |[**손윤환**](https://github.com/Yunan31)| 전처리 함수 변경, Tokenizing 실험 (Type entity marker, special token 등), 앙상블 baseline 구현 (hard voting)|
 |[**최새연**](https://github.com/new-open)|데이터 증강 (동의어 치환/삽입), semantic typing 데이터셋 구축, github 협업 관련 template 제작 (PR, issue)|
-|[**허재하**](https://github.com/jaehahuh)|Baseline model code에 기능 추가 및 구현, optimizer and scheduler(AdamP, SGD 등) 구현 및 성능 테스트|
+|[**허재하**](https://github.com/jaehahuh)|Baseline model code에 기능 추가 및 구현, optimizer and scheduler(AdamP, SGD 등) 구현 및 모델 성능 테스트|
 |[**황기중**](https://github.com/merri4)|EDA (label별 오답률 분석, unk 토큰 영향 분석), 데이터 증강 (부사 치환), 모델 실험 (koelectra, funnel, bert), TAPT (roberta-large), 앙상블 baseline 구현 (softmax weighted sum)|
 |[**황인수**](https://github.com/In-Soo-Hwang)|EDA (entity pair - label 분표 및 비율 확인), 앙상블 baseline 구현 (mean, weighted sum)|
 
