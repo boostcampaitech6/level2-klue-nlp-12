@@ -48,7 +48,7 @@ def num_to_label(label):
   
   return origin_label
 
-def load_test_dataset(dataset_dir, tokenizer):
+def load_test_dataset(dataset_dir, tokenizer, option):
   """
     test dataset을 불러온 후,
     tokenizing 합니다.
@@ -56,7 +56,7 @@ def load_test_dataset(dataset_dir, tokenizer):
   test_dataset = load_data(dataset_dir)
   test_label = list(map(int,test_dataset['label'].values))
   # tokenizing dataset
-  tokenized_test = tokenized_dataset(test_dataset, tokenizer)
+  tokenized_test = tokenized_dataset(test_dataset, tokenizer, option)
   return test_dataset['id'], tokenized_test, test_label
 
 def parse_arguments() :
@@ -68,6 +68,7 @@ def parse_arguments() :
   parser.add_argument('--test_dir', type=str, default="../dataset/test/test_data.csv")
   parser.add_argument('--output', type=str, default='./prediction/submission_roberta_large_imsi.csv')
   parser.add_argument('--seed', type=int, default=486)
+  parser.add_argument('--tokenizing_option', type=str, default='default')
 
   args = parser.parse_args()
 
@@ -96,7 +97,7 @@ def main(args):
   ### Test dataset
   ### ========================================================================
   ## load test datset
-  test_id, test_dataset, test_label = load_test_dataset(args.test_dir, tokenizer)
+  test_id, test_dataset, test_label = load_test_dataset(args.test_dir, tokenizer, args.tokenizing_option)
   Re_test_dataset = RE_Dataset(test_dataset ,test_label)
 
   ### ========================================================================

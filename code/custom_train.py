@@ -9,6 +9,42 @@ from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassifi
 from load_data import *
 import argparse
 
+#Optimizer library
+import timm.optim
+
+#Schedular library
+import torch.optim.lr_scheduler
+
+  ### ========================================================================
+  ### optimizer and schedular class
+  ### ========================================================================
+'''
+  optimizer의 경우 논문을 읽어보고 AdamP가 제일 좋은 것 같아서 일단 AdamP를 베이스코드로 설정했지만 timm (https://timm.fast.ai/Optimizers)안에 있는 다른 다양한 optimizer들을 적용할 수 있습니다
+  아래의 양식대로 CustomTrainingArguments 클래스에 원하는 optimizer나 scheduler를 추가하시면 됩니다.
+  (examples)
+  1.optimizer options: 
+  optimizer = torch.optim.AdamP(model.parameters(), lr=2e-5)
+  optimizer = torch.optim.SGD(model.parameters(), lr=0.0001)
+
+  2. shedular options:
+  scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer=optimizer, lr_lambda=lambda epoch: 0.95 ** epoch)
+  scheduler = torch.optim.lr_scheduler.MultiplicativeLR(optimizer=optimizer,lr_lambda=lambda epoch: 0.95 ** epoch)
+  scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+  scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[30,80], gamma=0.5)
+  scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.5)
+  scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50, eta_min=0)
+  scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=10, epochs=10, anneal_strategy='cos')
+  scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=1, eta_min=0.00001)
+
+'''
+class CustomTrainingArguments(TrainingArguments):
+  def create_optimizer_and_scheduler(self, num_training_steps: int):
+    optimizer = torch.optim.AdamP(self.model.parameters(), lr=2e-5)
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.1, steps_per_epoch=10, epochs=10, anneal_strategy='linear')
+
+    return optimizer, scheduler
+
+
 def seed_everything(seed = 42) :
     np.random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -85,16 +121,15 @@ def parse_arguments() :
   
   parser.add_argument('--epoch', type=int, default=5)
   parser.add_argument('--batch_size', type=int, default=32)
-  parser.add_argument('--lr', type=float, default=5e-5)
   parser.add_argument('--seed', type=int, default=486)
   
   parser.add_argument('--save_total_limit', type=int, default=10)
   parser.add_argument('--eval_steps', type=int, default=1000)
-  parser.add_argument('--warmup_steps', type=int, default=500)
-  parser.add_argument('--weight_decay', type=int, default=0.01)
 
-  parser.add_argument('--tokenizing_option', type=str, default='default')
-  parser.add_argument('--preprocessing_option', type=str, default='default')
+  # optimizer와 scheduler 관련 parser
+  #parser.add_argument('--lr', type=float, default=5e-5)
+  #parser.add_argument('--warmup_steps', type=int, default=500)
+  #parser.add_argument('--weight_decay', type=int, default=0.01)
 
   args = parser.parse_args()
 
@@ -130,15 +165,15 @@ def train():
   ### 데이터셋 준비
   ### ========================================================================
   # load dataset
-  train_dataset = load_data(args.train_dir, args.preprocessing_option)
-  dev_dataset = load_data(args.dev_dir, args.preprocessing_option) # validation용 데이터는 따로 만드셔야 합니다.
+  train_dataset = load_data(args.train_dir)
+  dev_dataset = load_data(args.dev_dir) # validation용 데이터는 따로 만드셔야 합니다.
 
   train_label = label_to_num(train_dataset['label'].values)
   dev_label = label_to_num(dev_dataset['label'].values)
 
   # tokenizing dataset
-  tokenized_train = tokenized_dataset(train_dataset, tokenizer, args.tokenizing_option)
-  tokenized_dev = tokenized_dataset(dev_dataset, tokenizer, args.tokenizing_option)
+  tokenized_train = tokenized_dataset(train_dataset, tokenizer)
+  tokenized_dev = tokenized_dataset(dev_dataset, tokenizer)
 
   # make dataset for pytorch.
   RE_train_dataset = RE_Dataset(tokenized_train, train_label)
@@ -151,25 +186,35 @@ def train():
   
   # https://huggingface.co/transformers/main_classes/trainer.html#trainingarguments
 
-  training_args = TrainingArguments(
+  
+
+  #Custom Training Arguments
+  training_args = CustomTrainingArguments(
     output_dir=args.output_dir,                   # output directory
     save_total_limit=args.save_total_limit,       # number of total save model.
     save_steps=args.eval_steps,                   # model saving step.
     num_train_epochs=args.epoch,                  # total number of training epochs
-    learning_rate=args.lr,                        # learning_rate
     per_device_train_batch_size=args.batch_size,  # batch size per device during training
     per_device_eval_batch_size=args.batch_size,   # batch size for evaluation
-    warmup_steps=args.warmup_steps,               # number of warmup steps for learning rate scheduler
-    weight_decay=args.weight_decay,               # strength of weight decay
     logging_dir='./logs',                         # directory for storing logs
     logging_steps=100,                            # log saving step.
     evaluation_strategy='steps',                  # evaluation strategy to adopt during training
                                                   # `no`: No evaluation during training.
                                                   # `steps`: Evaluate every `eval_steps`.
                                                   # `epoch`: Evaluate every end of epoch.
-    eval_steps = args.eval_steps,                 # evaluation step.
-    load_best_model_at_end = True 
-  )
+
+    eval_steps=args.eval_steps,                   # evaluation step.
+    load_best_model_at_end=True
+
+
+    # optimizer 종류는 args에서도 변경 할 수 있지만 default로 AdamW로 되어 있고 AdamP는 포함이 안되어 있는 것 같아서 따로 custom class를 추가했습니다.
+    #learning_rate=args.lr,                        # learning_rate
+
+    #training_args에 있는 스케쥴러의 경우에도 linear로 고정 되어 있는것 같아서 custom class에 추가했습니다.
+    #warmup_steps=args.warmup_steps,               # number of warmup steps for learning rate scheduler
+    #weight_decay=args.weight_decay,               # strength of weight decay
+
+)
 
   trainer = Trainer(
     model=model,                         # the instantiated 🤗 Transformers model to be trained
@@ -179,6 +224,7 @@ def train():
     compute_metrics=compute_metrics         # define metrics function
   )
 
+  
   # train model
   trainer.train()
   model.save_pretrained('./best_model')
